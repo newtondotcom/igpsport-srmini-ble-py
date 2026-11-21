@@ -14,3 +14,8 @@ srmini = "srmini_ble.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.17.6",
+]
