@@ -49,6 +49,18 @@ only controls radar data notifications.
 on that page (`BLCS_RADAR_WARN`, config value 21). It controls alert behavior,
 which the app exposes separately from the main Radars switch.
 
+The intelligent configuration sync switches are also available:
+
+```sh
+uv run srmini smart-light-sync on
+uv run srmini smart-light-sync off
+uv run srmini team-sync on
+uv run srmini team-sync off
+```
+
+Smart Light Sync uses the app's `BLCS_SYNC_OFF` setting (config value 5); Team
+Sync uses `BLCS_TEAM_RIDE` (config value 6).
+
 `auto-sleep on` and `auto-sleep off` write the app's Auto Sleep setting
 (`BLCS_AUTO_SLEEP`, config value 4), including its timeout slider value:
 
@@ -83,6 +95,8 @@ app's `PIS_ALL_INFO` response for battery voltage, temperature, and memory. The
 decompiled SR Mini info schema does not include a separate protocol version;
 that field is shown as not reported. Temperature and memory are printed in the
 device's raw units; the protocol source does not document their scales.
+It also requests the app's `BLS_LEFT_TIME` response and displays the device's
+predicted remaining light runtime in minutes, formatted as hours/minutes.
 
 Mode IDs and names are from the app's `BLE_LIGHT_MODE` enum. Whether each mode is
 supported by a particular firmware/device variant is not queried yet.

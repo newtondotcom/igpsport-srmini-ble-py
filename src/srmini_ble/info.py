@@ -14,6 +14,8 @@ from .protocol import build_header, crc8, protobuf_varint
 INFO_SERVICE = 101
 INFO_ALL = 31
 GET = 2
+LIGHT_SERVICE = 106
+LIGHT_LEFT_TIME = 5
 
 DEVICE_INFO_CHARS = {
     "manufacturer": "00002a29-0000-1000-8000-00805f9b34fb",
@@ -136,14 +138,21 @@ async def _read_standard_characteristics(client: BleakClient) -> dict[str, str |
     return values
 
 
-async def _read_app_info(client: BleakClient, timeout: float) -> dict[str, object]:
+async def _read_response_payload(
+    client: BleakClient,
+    request: bytes,
+    *,
+    service: int,
+    subtype: int,
+    operation: int,
+    timeout: float,
+) -> bytes:
     packets: asyncio.Queue[bytes] = asyncio.Queue()
 
     def on_notification(_characteristic, data: bytearray) -> None:
         packets.put_nowait(bytes(data))
 
     await client.start_notify(UART_TX_UUID, on_notification)
-    request = build_info_request()
     chunk_size = max(1, client.mtu_size - 3)
     for offset in range(0, len(request), chunk_size):
         await client.write_gatt_char(UART_RX_UUID,
@@ -159,12 +168,12 @@ async def _read_app_info(client: BleakClient, timeout: float) -> dict[str, objec
         buffer.extend(await asyncio.wait_for(packets.get(), remaining))
 
         while len(buffer) >= 20:
-            # Skip fixed-size unsolicited status packets and re-sync on a
-            # complete command response for PST_INFO/PIS_ALL_INFO.
+            # Skip unsolicited status packets and re-sync on the response
+            # matching this service, subtype, and operation.
             if (buffer[0] not in (1, 2)
-                    or buffer[1] != INFO_SERVICE
-                    or buffer[2] != INFO_ALL
-                    or buffer[4] != GET):
+                    or buffer[1] != service
+                    or buffer[2] != subtype
+                    or buffer[4] != operation):
                 if buffer[0] == 3 and len(buffer) >= 20:
                     del buffer[:20]
                 else:
@@ -181,11 +190,45 @@ async def _read_app_info(client: BleakClient, timeout: float) -> dict[str, objec
             del buffer[:total]
             if crc8(frame[20:]) != frame[9]:
                 continue
-            return parse_info_payload(frame[20:])
+            await client.stop_notify(UART_TX_UUID)
+            return frame[20:]
+
+
+async def _read_app_info(client: BleakClient, timeout: float) -> dict[str, object]:
+    payload = await _read_response_payload(
+        client, build_info_request(), service=INFO_SERVICE, subtype=INFO_ALL,
+        operation=GET, timeout=timeout,
+    )
+    return parse_info_payload(payload)
+
+
+def build_remaining_runtime_request() -> bytes:
+    # Ride app: PST_BLE_LIGHT/POT_GET/BLS_LEFT_TIME (service 106, subtype 5).
+    payload = (protobuf_varint(1, LIGHT_SERVICE)
+               + protobuf_varint(2, GET)
+               + protobuf_varint(3, LIGHT_LEFT_TIME))
+    return build_header(payload, service=LIGHT_SERVICE,
+                        subtype=LIGHT_LEFT_TIME, operation=GET)
+
+
+async def _read_remaining_runtime(client: BleakClient, timeout: float) -> int | None:
+    payload = await _read_response_payload(
+        client, build_remaining_runtime_request(), service=LIGHT_SERVICE,
+        subtype=LIGHT_LEFT_TIME, operation=GET, timeout=timeout,
+    )
+    envelope = parse_fields(payload)
+    left_time = _one(envelope, 14)
+    if not isinstance(left_time, bytes):
+        raise ValueError("SR Mini runtime response has no left_time field")
+    minutes = _one(parse_fields(left_time), 1)
+    if not isinstance(minutes, int):
+        raise ValueError("SR Mini runtime response has no time value")
+    # The app treats uint64 max as signed -1, meaning unavailable.
+    return None if minutes == 0xFFFFFFFFFFFFFFFF else minutes
 
 
 async def read_device_info(address: str, *, timeout: float = 5.0) -> dict[str, object]:
-    """Connect and read standard BLE fields plus the app's all-info response."""
+    """Read standard BLE fields, app info, and estimated remaining runtime."""
     async with BleakClient(address) as client:
         standard = await _read_standard_characteristics(client)
         try:
@@ -194,7 +237,23 @@ async def read_device_info(address: str, *, timeout: float = 5.0) -> dict[str, o
         except (TimeoutError, ValueError, BleakError, OSError) as exc:
             app_info = {}
             app_error = str(exc)
-    return {"standard": standard, "app": app_info, "app_error": app_error}
+            try:
+                await client.stop_notify(UART_TX_UUID)
+            except Exception:
+                pass
+        try:
+            runtime_minutes = await _read_remaining_runtime(client, timeout)
+            runtime_error = None
+        except (TimeoutError, ValueError, BleakError, OSError) as exc:
+            runtime_minutes = None
+            runtime_error = str(exc)
+    return {
+        "standard": standard,
+        "app": app_info,
+        "app_error": app_error,
+        "runtime_minutes": runtime_minutes,
+        "runtime_error": runtime_error,
+    }
 
 
 def format_device_info(data: dict[str, object]) -> str:
@@ -243,6 +302,19 @@ def format_device_info(data: dict[str, object]) -> str:
     battery_text = (f"{battery_level}%" if isinstance(battery_level, int)
                     else "not reported")
 
+    runtime_minutes = data.get("runtime_minutes")
+    if isinstance(runtime_minutes, int):
+        days, remainder = divmod(runtime_minutes, 1440)
+        hours, minutes = divmod(remainder, 60)
+        if days:
+            runtime_text = f"{days}d" + (f"{hours}h" if hours else "")
+        elif hours:
+            runtime_text = f"{hours}h" + (f"{minutes}min" if minutes else "")
+        else:
+            runtime_text = f"{minutes}min"
+    else:
+        runtime_text = "not reported"
+
     output = [
         "🏷️ Device info",
         f"  Manufacturer: {manufacturer}",
@@ -252,9 +324,13 @@ def format_device_info(data: dict[str, object]) -> str:
         # "  Protocol version: not separately reported by the SR Mini info response",
         "🔋 Battery",
         f"  Level: {battery_text}",
+        f"  Predicted runtime: {runtime_text}",
         # f"  Voltage: {voltage_text}",
         # "🌡️ Sensors",
     ]
+    runtime_error = data.get("runtime_error")
+    if runtime_error:
+        output.append(f"  Runtime estimate unavailable: {runtime_error}")
     app_error = data.get("app_error")
     if app_error:
         output.append(f"  SR Mini protocol info unavailable: {app_error}")
