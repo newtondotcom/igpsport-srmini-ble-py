@@ -7,6 +7,7 @@ import asyncio
 
 from .client import find_srmini, send_frame
 from .info import format_device_info, read_device_info
+from .function_config import build_auto_sleep_frame
 from .light import LightMode, build_set_mode_frame, parse_mode
 from .radar import build_radar_switch_frame
 
@@ -48,11 +49,40 @@ async def _run(args: argparse.Namespace) -> int:
             print(f"{name}  {device.address}  RSSI={advertisement.rssi}")
         return 0
 
-    if args.command in ("radar", "radar-alert"):
-        enabled = args.action == "on"
-        alert = args.command == "radar-alert"
-        feature = "Radar Alert" if alert else "Radar"
-        frame = build_radar_switch_frame(enabled, alert=alert)
+    if args.command in ("radar", "radar-alert", "auto-sleep"):
+        if args.command == "auto-sleep":
+            if args.action == "timeout":
+                if args.value is None:
+                    print("Provide the timeout in seconds: auto-sleep timeout 300")
+                    return 2
+                enabled = args.enabled == "on"
+                try:
+                    timeout_seconds = int(args.value)
+                    frame = build_auto_sleep_frame(enabled, timeout_seconds)
+                except ValueError as exc:
+                    print(exc)
+                    return 2
+                feature = "Auto Sleep timeout"
+                state = f"{timeout_seconds}s (Auto Sleep {'on' if enabled else 'off'})"
+            else:
+                if args.value is not None:
+                    print("Only the timeout action takes a value.")
+                    return 2
+                enabled = args.action == "on"
+                timeout_seconds = args.timeout_seconds
+                try:
+                    frame = build_auto_sleep_frame(enabled, timeout_seconds)
+                except ValueError as exc:
+                    print(exc)
+                    return 2
+                feature = "Auto Sleep"
+                state = "on" if enabled else "off"
+        else:
+            enabled = args.action == "on"
+            alert = args.command == "radar-alert"
+            feature = "Radar Alert" if alert else "Radar"
+            frame = build_radar_switch_frame(enabled, alert=alert)
+            state = "on" if enabled else "off"
         address = args.address
         if not address:
             devices = await find_srmini(timeout=args.timeout)
@@ -76,7 +106,6 @@ async def _run(args: argparse.Namespace) -> int:
             notification_callback=show_notification,
             expected_reply=(106, 4, 1),
         )
-        state = "on" if enabled else "off"
         if status is None:
             print(f"No {feature.lower()} reply received; {state} is unconfirmed.")
             return 1
@@ -141,6 +170,17 @@ def main() -> None:
     radar_alert.add_argument("action", choices=("on", "off"), help="turn Radar Alert on or off")
     radar_alert.add_argument("--address", help="BLE address/identifier; otherwise scan for SR Mini")
     radar_alert.add_argument("--timeout", type=float, default=8.0)
+
+    auto_sleep = subparsers.add_parser("auto-sleep", help="configure SR Mini Auto Sleep and its timeout")
+    auto_sleep.add_argument("action", choices=("on", "off", "timeout"))
+    auto_sleep.add_argument("value", nargs="?", help="timeout in seconds when action is 'timeout'")
+    auto_sleep.add_argument("--enabled", choices=("on", "off"), default="on",
+                            help="Auto Sleep state when setting a timeout (default: on)")
+    auto_sleep.add_argument("--timeout-seconds", type=int, default=30,
+                            help="timeout to retain when turning Auto Sleep on or off (default: 30)")
+    auto_sleep.add_argument("--address", help="BLE address/identifier; otherwise scan for SR Mini")
+    auto_sleep.add_argument("--timeout", type=float, default=8.0,
+                            help="BLE scan timeout in seconds")
 
     set_mode = subparsers.add_parser("set-mode", help="send a light mode to an SR Mini")
     set_mode.add_argument("mode", help="mode ID or name; run 'srmini modes' to list them")

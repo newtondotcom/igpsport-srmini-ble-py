@@ -49,6 +49,20 @@ only controls radar data notifications.
 on that page (`BLCS_RADAR_WARN`, config value 21). It controls alert behavior,
 which the app exposes separately from the main Radars switch.
 
+`auto-sleep on` and `auto-sleep off` write the app's Auto Sleep setting
+(`BLCS_AUTO_SLEEP`, config value 4), including its timeout slider value:
+
+```sh
+uv run srmini auto-sleep on --timeout-seconds 300
+uv run srmini auto-sleep off --timeout-seconds 300
+uv run srmini auto-sleep timeout 300
+```
+
+The timeout is in seconds. The app slider accepts 30–1200 seconds in 30-second
+steps. `auto-sleep timeout N` sets the slider value and leaves Auto Sleep on by
+default; pass `--enabled off` to keep it off. Switch commands default to 30
+seconds unless `--timeout-seconds` is supplied.
+
 `info` reads standard BLE manufacturer/revision/serial/battery characteristics
 and the standard Current Time characteristic when present, then requests the
 app's `PIS_ALL_INFO` response for battery voltage, temperature, and memory. The
