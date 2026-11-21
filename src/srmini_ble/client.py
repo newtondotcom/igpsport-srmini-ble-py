@@ -30,9 +30,14 @@ async def find_srmini(timeout: float = 8.0):
 
 async def send_frame(address: str, frame: bytes, *,
                      notification_callback: Callable[[bytes], None] | None = None,
-                     listen_seconds: float = 0.5) -> None:
-    """Connect, optionally listen for TX notifications, and write one frame."""
+                     listen_seconds: float = 0.5,
+                     expected_reply: tuple[int, int, int] | None = None,
+                     reply_timeout: float = 2.0) -> int | None:
+    """Connect and write a frame; optionally return the app-protocol status."""
+    packets: asyncio.Queue[bytes] = asyncio.Queue()
+
     def on_notification(_characteristic, data: bytearray) -> None:
+        packets.put_nowait(bytes(data))
         if notification_callback:
             notification_callback(bytes(data))
 
@@ -46,5 +51,22 @@ async def send_frame(address: str, frame: bytes, *,
             await client.write_gatt_char(
                 UART_RX_UUID, frame[offset:offset + chunk_size], response=True
             )
+        if expected_reply is not None:
+            service, subtype, operation = expected_reply
+            deadline = asyncio.get_running_loop().time() + reply_timeout
+            while True:
+                remaining = deadline - asyncio.get_running_loop().time()
+                if remaining <= 0:
+                    return None
+                try:
+                    packet = await asyncio.wait_for(packets.get(), remaining)
+                except asyncio.TimeoutError:
+                    return None
+                if (len(packet) >= 20 and packet[0] == 2
+                        and packet[1] == service and packet[2] == subtype
+                        and packet[4] == operation):
+                    # The Ride app's isCommandStatusSuccess checks header[7].
+                    return packet[7]
         if notification_callback and listen_seconds > 0:
             await asyncio.sleep(listen_seconds)
+    return None

@@ -48,9 +48,11 @@ async def _run(args: argparse.Namespace) -> int:
             print(f"{name}  {device.address}  RSSI={advertisement.rssi}")
         return 0
 
-    if args.command == "radar":
+    if args.command in ("radar", "radar-alert"):
         enabled = args.action == "on"
-        frame = build_radar_switch_frame(enabled)
+        alert = args.command == "radar-alert"
+        feature = "Radar Alert" if alert else "Radar"
+        frame = build_radar_switch_frame(enabled, alert=alert)
         address = args.address
         if not address:
             devices = await find_srmini(timeout=args.timeout)
@@ -72,16 +74,16 @@ async def _run(args: argparse.Namespace) -> int:
             address,
             frame,
             notification_callback=show_notification,
-            expected_reply=(102, 7, 1),
+            expected_reply=(106, 4, 1),
         )
         state = "on" if enabled else "off"
         if status is None:
-            print(f"No radar-setting reply received; data broadcast {state} is unconfirmed.")
+            print(f"No {feature.lower()} reply received; {state} is unconfirmed.")
             return 1
         if status != 0:
-            print(f"SR Mini rejected radar data broadcast {state} (status {status}).")
+            print(f"SR Mini rejected {feature.lower()} setting {state} (status {status}).")
             return 1
-        print(f"SR Mini acknowledged radar data broadcast {state}. The lamp power is unchanged.")
+        print(f"SR Mini acknowledged {feature.lower()} setting {state}.")
         return 0
 
     try:
@@ -130,10 +132,15 @@ def main() -> None:
     info.add_argument("--timeout", type=float, default=5.0,
                       help="seconds to wait for the app-protocol info response")
 
-    radar = subparsers.add_parser("radar", help="enable or disable SR Mini radar data")
-    radar.add_argument("action", choices=("on", "off"), help="turn radar data on or off")
+    radar = subparsers.add_parser("radar", help="enable or disable the SR Mini radar feature")
+    radar.add_argument("action", choices=("on", "off"), help="turn the radar feature on or off")
     radar.add_argument("--address", help="BLE address/identifier; otherwise scan for SR Mini")
     radar.add_argument("--timeout", type=float, default=8.0)
+
+    radar_alert = subparsers.add_parser("radar-alert", help="enable or disable the SR Mini Radar Alert feature")
+    radar_alert.add_argument("action", choices=("on", "off"), help="turn Radar Alert on or off")
+    radar_alert.add_argument("--address", help="BLE address/identifier; otherwise scan for SR Mini")
+    radar_alert.add_argument("--timeout", type=float, default=8.0)
 
     set_mode = subparsers.add_parser("set-mode", help="send a light mode to an SR Mini")
     set_mode.add_argument("mode", help="mode ID or name; run 'srmini modes' to list them")

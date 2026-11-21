@@ -40,10 +40,14 @@ notification characteristic is `6e400003-b5a3-f393-e0a9-e50e24dcca9e`.
 `--dry-run` prints the encoded frame and never connects to BLE.
 Frames are split into ATT-sized writes, matching the app's UART write behavior.
 
-`radar on` and `radar off` use the app's `PCS_DATA_BROADCAST` setting and its
-`dataSwitch` boolean. This toggles radar data broadcasting through the Ride app
-protocol; it does not switch the tail light off and may not physically power the
-radar hardware down. Use `uv run srmini set-mode off` to turn the lamp off.
+`radar on` and `radar off` use the same smart configuration as the app's
+Intelligent Function Configuration → Radars switch (`BLCS_RADAR`, service 106,
+subservice 4). This is separate from the `PCS_DATA_BROADCAST` setting, which
+only controls radar data notifications.
+
+`radar-alert on` and `radar-alert off` control the adjacent Radar Alert switch
+on that page (`BLCS_RADAR_WARN`, config value 21). It controls alert behavior,
+which the app exposes separately from the main Radars switch.
 
 `info` reads standard BLE manufacturer/revision/serial/battery characteristics
 and the standard Current Time characteristic when present, then requests the
