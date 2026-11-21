@@ -63,6 +63,20 @@ steps. `auto-sleep timeout N` sets the slider value and leaves Auto Sleep on by
 default; pass `--enabled off` to keep it off. Switch commands default to 30
 seconds unless `--timeout-seconds` is supplied.
 
+Brake Alert uses the app's ride configuration service (`BLS_RIDE_CFG`,
+`ride_cfg_set`). Configure it with the app's steady/flash mode and
+low/medium/high brightness level:
+
+```sh
+uv run srmini brake-alert on --mode flash --brightness high
+uv run srmini brake-alert off --mode steady --brightness medium
+```
+
+There is also a separate percentage slider, exposed as `--intensity` (10–100;
+default 50), plus the device pattern selector `--pattern-index` (default 0).
+Unspecified options use steady mode, low brightness, 50% intensity, and pattern
+index 0.
+
 `info` reads standard BLE manufacturer/revision/serial/battery characteristics
 and the standard Current Time characteristic when present, then requests the
 app's `PIS_ALL_INFO` response for battery voltage, temperature, and memory. The

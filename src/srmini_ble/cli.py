@@ -6,6 +6,7 @@ import argparse
 import asyncio
 
 from .client import find_srmini, send_frame
+from .brake import build_brake_alert_frame
 from .info import format_device_info, read_device_info
 from .function_config import build_auto_sleep_frame
 from .light import LightMode, build_set_mode_frame, parse_mode
@@ -49,7 +50,7 @@ async def _run(args: argparse.Namespace) -> int:
             print(f"{name}  {device.address}  RSSI={advertisement.rssi}")
         return 0
 
-    if args.command in ("radar", "radar-alert", "auto-sleep"):
+    if args.command in ("radar", "radar-alert", "auto-sleep", "brake-alert"):
         if args.command == "auto-sleep":
             if args.action == "timeout":
                 if args.value is None:
@@ -77,6 +78,21 @@ async def _run(args: argparse.Namespace) -> int:
                     return 2
                 feature = "Auto Sleep"
                 state = "on" if enabled else "off"
+        elif args.command == "brake-alert":
+            enabled = args.action == "on"
+            try:
+                frame = build_brake_alert_frame(
+                    enabled,
+                    mode=args.mode,
+                    brightness=args.brightness,
+                    intensity=args.intensity,
+                    pattern_index=args.pattern_index,
+                )
+            except ValueError as exc:
+                print(exc)
+                return 2
+            feature = "Brake Alert"
+            state = "on" if enabled else "off"
         else:
             enabled = args.action == "on"
             alert = args.command == "radar-alert"
@@ -104,7 +120,7 @@ async def _run(args: argparse.Namespace) -> int:
             address,
             frame,
             notification_callback=show_notification,
-            expected_reply=(106, 4, 1),
+            expected_reply=(106, 9 if args.command == "brake-alert" else 4, 1),
         )
         if status is None:
             print(f"No {feature.lower()} reply received; {state} is unconfirmed.")
@@ -181,6 +197,20 @@ def main() -> None:
     auto_sleep.add_argument("--address", help="BLE address/identifier; otherwise scan for SR Mini")
     auto_sleep.add_argument("--timeout", type=float, default=8.0,
                             help="BLE scan timeout in seconds")
+
+    brake_alert = subparsers.add_parser("brake-alert", help="configure and enable or disable SR Mini Brake Alert")
+    brake_alert.add_argument("action", choices=("on", "off"))
+    brake_alert.add_argument("--mode", choices=("steady", "flash"), default="steady",
+                             help="brake alert mode (default: steady)")
+    brake_alert.add_argument("--brightness", choices=("low", "medium", "high"), default="low",
+                             help="brake brightness level (default: low)")
+    brake_alert.add_argument("--intensity", type=int, default=50,
+                             help="separate braking brightness slider, 10–100 percent (default: 50)")
+    brake_alert.add_argument("--pattern-index", type=int, default=0,
+                             help="device brake pattern index (default: 0)")
+    brake_alert.add_argument("--address", help="BLE address/identifier; otherwise scan for SR Mini")
+    brake_alert.add_argument("--timeout", type=float, default=8.0,
+                             help="BLE scan timeout in seconds")
 
     set_mode = subparsers.add_parser("set-mode", help="send a light mode to an SR Mini")
     set_mode.add_argument("mode", help="mode ID or name; run 'srmini modes' to list them")
