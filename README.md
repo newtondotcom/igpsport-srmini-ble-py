@@ -6,7 +6,7 @@ and a CLI, following the broad structure of
 [python-igps-ble](https://github.com/hudsonbrendon/python-igps-ble).
 
 The command format is based on the iGPSPORT Ride 8.06.50 decompiled source.
-This is an initial implementation; it has not yet been validated against a
+This is an initial implementation; it has not yet been fully validated against a
 physical SR Mini.
 
 ## Install with uv
@@ -19,6 +19,9 @@ uv sync
 
 ```sh
 uv run srmini scan
+uv run srmini info
+uv run srmini radar on
+uv run srmini radar off
 uv run srmini modes
 uv run srmini set-mode high_always --dry-run
 uv run srmini set-mode 1
@@ -36,6 +39,18 @@ The implemented command sets the current light mode through BLE UART RX
 notification characteristic is `6e400003-b5a3-f393-e0a9-e50e24dcca9e`.
 `--dry-run` prints the encoded frame and never connects to BLE.
 Frames are split into ATT-sized writes, matching the app's UART write behavior.
+
+`radar on` and `radar off` use the app's `PCS_DATA_BROADCAST` setting and its
+`dataSwitch` boolean. This toggles radar data broadcasting through the Ride app
+protocol; it does not switch the tail light off and may not physically power the
+radar hardware down. Use `uv run srmini set-mode off` to turn the lamp off.
+
+`info` reads standard BLE manufacturer/revision/serial/battery characteristics
+and the standard Current Time characteristic when present, then requests the
+app's `PIS_ALL_INFO` response for battery voltage, temperature, and memory. The
+decompiled SR Mini info schema does not include a separate protocol version;
+that field is shown as not reported. Temperature and memory are printed in the
+device's raw units; the protocol source does not document their scales.
 
 Mode IDs and names are from the app's `BLE_LIGHT_MODE` enum. Whether each mode is
 supported by a particular firmware/device variant is not queried yet.

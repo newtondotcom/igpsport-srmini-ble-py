@@ -6,7 +6,9 @@ import argparse
 import asyncio
 
 from .client import find_srmini, send_frame
+from .info import format_device_info, read_device_info
 from .light import LightMode, build_set_mode_frame, parse_mode
+from .radar import build_radar_switch_frame
 
 
 def _mode_listing() -> str:
@@ -18,6 +20,24 @@ async def _run(args: argparse.Namespace) -> int:
         print(_mode_listing())
         return 0
 
+    if args.command == "info":
+        address = args.address
+        if not address:
+            devices = await find_srmini(timeout=args.timeout)
+            if not devices:
+                print("No device named SR Mini found. Wake the light or pass --address.")
+                return 1
+            if len(devices) > 1:
+                print("More than one SR Mini found; pass --address to choose one:")
+                for device, advertisement in devices:
+                    name = advertisement.local_name or device.name or "SR Mini"
+                    print(f"  {name}  {device.address}")
+                return 2
+            address = devices[0][0].address
+        info = await read_device_info(address, timeout=args.timeout)
+        print(format_device_info(info))
+        return 0
+
     if args.command == "scan":
         devices = await find_srmini(timeout=args.timeout)
         if not devices:
@@ -26,6 +46,42 @@ async def _run(args: argparse.Namespace) -> int:
         for device, advertisement in devices:
             name = advertisement.local_name or device.name or "SR Mini"
             print(f"{name}  {device.address}  RSSI={advertisement.rssi}")
+        return 0
+
+    if args.command == "radar":
+        enabled = args.action == "on"
+        frame = build_radar_switch_frame(enabled)
+        address = args.address
+        if not address:
+            devices = await find_srmini(timeout=args.timeout)
+            if not devices:
+                print("No device named SR Mini found. Wake the light or pass --address.")
+                return 1
+            if len(devices) > 1:
+                print("More than one SR Mini found; pass --address to choose one:")
+                for device, advertisement in devices:
+                    name = advertisement.local_name or device.name or "SR Mini"
+                    print(f"  {name}  {device.address}")
+                return 2
+            address = devices[0][0].address
+
+        def show_notification(data: bytes) -> None:
+            print(f"Notification: {data.hex(' ')}")
+
+        status = await send_frame(
+            address,
+            frame,
+            notification_callback=show_notification,
+            expected_reply=(102, 7, 1),
+        )
+        state = "on" if enabled else "off"
+        if status is None:
+            print(f"No radar-setting reply received; data broadcast {state} is unconfirmed.")
+            return 1
+        if status != 0:
+            print(f"SR Mini rejected radar data broadcast {state} (status {status}).")
+            return 1
+        print(f"SR Mini acknowledged radar data broadcast {state}. The lamp power is unchanged.")
         return 0
 
     try:
@@ -68,6 +124,16 @@ def main() -> None:
     scan.add_argument("--timeout", type=float, default=8.0)
 
     subparsers.add_parser("modes", help="list the mode IDs found in the app")
+
+    info = subparsers.add_parser("info", help="read SR Mini device, battery, and sensor info")
+    info.add_argument("--address", help="BLE address/identifier; otherwise scan for SR Mini")
+    info.add_argument("--timeout", type=float, default=5.0,
+                      help="seconds to wait for the app-protocol info response")
+
+    radar = subparsers.add_parser("radar", help="enable or disable SR Mini radar data")
+    radar.add_argument("action", choices=("on", "off"), help="turn radar data on or off")
+    radar.add_argument("--address", help="BLE address/identifier; otherwise scan for SR Mini")
+    radar.add_argument("--timeout", type=float, default=8.0)
 
     set_mode = subparsers.add_parser("set-mode", help="send a light mode to an SR Mini")
     set_mode.add_argument("mode", help="mode ID or name; run 'srmini modes' to list them")
