@@ -23,8 +23,9 @@ async def _run(args: argparse.Namespace) -> int:
         if not devices:
             print("No device named SR Mini found. Wake the light and scan again.")
             return 1
-        for device in devices:
-            print(f"{device.name or 'SR Mini'}  {device.address}  RSSI={device.rssi}")
+        for device, advertisement in devices:
+            name = advertisement.local_name or device.name or "SR Mini"
+            print(f"{name}  {device.address}  RSSI={advertisement.rssi}")
         return 0
 
     try:
@@ -45,10 +46,11 @@ async def _run(args: argparse.Namespace) -> int:
             return 1
         if len(devices) > 1:
             print("More than one SR Mini found; pass --address to choose one:")
-            for device in devices:
-                print(f"  {device.name or 'SR Mini'}  {device.address}")
+            for device, advertisement in devices:
+                name = advertisement.local_name or device.name or "SR Mini"
+                print(f"  {name}  {device.address}")
             return 2
-        address = devices[0].address
+        address = devices[0][0].address
 
     def show_notification(data: bytes) -> None:
         print(f"Notification: {data.hex(' ')}")
