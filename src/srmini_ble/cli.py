@@ -1,0 +1,81 @@
+"""Command line interface for SR Mini light control."""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+
+from .client import find_srmini, send_frame
+from .light import LightMode, build_set_mode_frame, parse_mode
+
+
+def _mode_listing() -> str:
+    return "\n".join(f"{mode.value:>2}  {mode.name.lower()}" for mode in LightMode)
+
+
+async def _run(args: argparse.Namespace) -> int:
+    if args.command == "modes":
+        print(_mode_listing())
+        return 0
+
+    if args.command == "scan":
+        devices = await find_srmini(timeout=args.timeout)
+        if not devices:
+            print("No device named SR Mini found. Wake the light and scan again.")
+            return 1
+        for device in devices:
+            print(f"{device.name or 'SR Mini'}  {device.address}  RSSI={device.rssi}")
+        return 0
+
+    try:
+        mode = parse_mode(args.mode)
+    except (ValueError, KeyError) as exc:
+        print(exc)
+        return 2
+    frame = build_set_mode_frame(mode)
+    if args.dry_run:
+        print(f"Mode: {mode.value} ({mode.name.lower()})")
+        print(f"Frame ({len(frame)} bytes): {frame.hex(' ')}")
+        return 0
+    address = args.address
+    if not address:
+        devices = await find_srmini(timeout=args.timeout)
+        if not devices:
+            print("No device named SR Mini found. Wake the light or pass --address.")
+            return 1
+        if len(devices) > 1:
+            print("More than one SR Mini found; pass --address to choose one:")
+            for device in devices:
+                print(f"  {device.name or 'SR Mini'}  {device.address}")
+            return 2
+        address = devices[0].address
+
+    def show_notification(data: bytes) -> None:
+        print(f"Notification: {data.hex(' ')}")
+
+    await send_frame(address, frame, notification_callback=show_notification)
+    print(f"Sent mode {mode.value} ({mode.name.lower()}) to {address}.")
+    return 0
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(prog="srmini", description="Control iGPSPORT SR Mini light modes over BLE")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    scan = subparsers.add_parser("scan", help="find nearby SR Mini devices")
+    scan.add_argument("--timeout", type=float, default=8.0)
+
+    subparsers.add_parser("modes", help="list the mode IDs found in the app")
+
+    set_mode = subparsers.add_parser("set-mode", help="send a light mode to an SR Mini")
+    set_mode.add_argument("mode", help="mode ID or name; run 'srmini modes' to list them")
+    set_mode.add_argument("--address", help="BLE address/identifier; otherwise scan for SR Mini")
+    set_mode.add_argument("--timeout", type=float, default=8.0)
+    set_mode.add_argument("--dry-run", action="store_true", help="print the encoded frame without connecting")
+
+    args = parser.parse_args()
+    raise SystemExit(asyncio.run(_run(args)))
+
+
+if __name__ == "__main__":
+    main()
