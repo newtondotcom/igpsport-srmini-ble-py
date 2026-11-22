@@ -20,5 +20,9 @@ def build_sync_switch_frame(config: int, enabled: bool) -> bytes:
         + protobuf_varint(3, SUBSERVICE_SMART_CONFIG)
         + protobuf_bytes(10, smart_config)
     )
-    return build_header(payload, service=SERVICE_BLE_LIGHT,
-                        subtype=SUBSERVICE_SMART_CONFIG, operation=OP_SET)
+    return build_header(
+        payload,
+        service=SERVICE_BLE_LIGHT,
+        subtype=SUBSERVICE_SMART_CONFIG,
+        operation=OP_SET,
+    )

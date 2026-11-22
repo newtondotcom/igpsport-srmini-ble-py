@@ -27,5 +27,9 @@ def build_auto_sleep_frame(enabled: bool, timeout_seconds: int) -> bytes:
         # blt_message_format.cfg_set is protobuf field 10.
         + protobuf_bytes(10, smart_config)
     )
-    return build_header(payload, service=SERVICE_BLE_LIGHT,
-                        subtype=SUBSERVICE_SMART_CONFIG, operation=OP_SET)
+    return build_header(
+        payload,
+        service=SERVICE_BLE_LIGHT,
+        subtype=SUBSERVICE_SMART_CONFIG,
+        operation=OP_SET,
+    )

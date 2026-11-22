@@ -28,11 +28,15 @@ async def find_srmini(timeout: float = 8.0):
     return matches
 
 
-async def send_frame(address: str, frame: bytes, *,
-                     notification_callback: Callable[[bytes], None] | None = None,
-                     listen_seconds: float = 0.5,
-                     expected_reply: tuple[int, int, int] | None = None,
-                     reply_timeout: float = 2.0) -> int | None:
+async def send_frame(
+    address: str,
+    frame: bytes,
+    *,
+    notification_callback: Callable[[bytes], None] | None = None,
+    listen_seconds: float = 0.5,
+    expected_reply: tuple[int, int, int] | None = None,
+    reply_timeout: float = 2.0,
+) -> int | None:
     """Connect and write a frame; optionally return the app-protocol status."""
     packets: asyncio.Queue[bytes] = asyncio.Queue()
 
@@ -49,7 +53,7 @@ async def send_frame(address: str, frame: bytes, *,
         chunk_size = max(1, client.mtu_size - 3)
         for offset in range(0, len(frame), chunk_size):
             await client.write_gatt_char(
-                UART_RX_UUID, frame[offset:offset + chunk_size], response=True
+                UART_RX_UUID, frame[offset : offset + chunk_size], response=True
             )
         if expected_reply is not None:
             service, subtype, operation = expected_reply
@@ -62,9 +66,13 @@ async def send_frame(address: str, frame: bytes, *,
                     packet = await asyncio.wait_for(packets.get(), remaining)
                 except asyncio.TimeoutError:
                     return None
-                if (len(packet) >= 20 and packet[0] == 2
-                        and packet[1] == service and packet[2] == subtype
-                        and packet[4] == operation):
+                if (
+                    len(packet) >= 20
+                    and packet[0] == 2
+                    and packet[1] == service
+                    and packet[2] == subtype
+                    and packet[4] == operation
+                ):
                     # The Ride app's isCommandStatusSuccess checks header[7].
                     return packet[7]
         if notification_callback and listen_seconds > 0:

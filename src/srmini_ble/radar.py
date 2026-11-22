@@ -26,5 +26,9 @@ def build_radar_switch_frame(enabled: bool, *, alert: bool = False) -> bytes:
         # blt_message_format.cfg_set is protobuf field 10 (wire key 0x52).
         + protobuf_bytes(10, smart_config)
     )
-    return build_header(payload, service=SERVICE_BLE_LIGHT,
-                        subtype=SUBSERVICE_SMART_CONFIG, operation=OP_SET)
+    return build_header(
+        payload,
+        service=SERVICE_BLE_LIGHT,
+        subtype=SUBSERVICE_SMART_CONFIG,
+        operation=OP_SET,
+    )

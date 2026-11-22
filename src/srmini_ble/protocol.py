@@ -22,8 +22,9 @@ def protobuf_varint(field_number: int, value: int) -> bytes:
 
 
 def protobuf_bytes(field_number: int, payload: bytes) -> bytes:
-    return (encode_varint((field_number << 3) | 2)
-            + encode_varint(len(payload)) + payload)
+    return (
+        encode_varint((field_number << 3) | 2) + encode_varint(len(payload)) + payload
+    )
 
 
 def crc8(data: bytes) -> int:
@@ -36,8 +37,9 @@ def crc8(data: bytes) -> int:
     return crc
 
 
-def build_header(payload: bytes, *, service: int, subtype: int,
-                 operation: int) -> bytes:
+def build_header(
+    payload: bytes, *, service: int, subtype: int, operation: int
+) -> bytes:
     """Build the app's 20-byte command header followed by its protobuf body."""
     if len(payload) > 0xFFFF:
         raise ValueError("payload is too large for the protocol header")

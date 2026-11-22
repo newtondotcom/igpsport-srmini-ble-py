@@ -14,8 +14,10 @@ from .protocol import build_header, crc8, protobuf_varint
 INFO_SERVICE = 101
 INFO_ALL = 31
 GET = 2
-LIGHT_SERVICE = 106
-LIGHT_LEFT_TIME = 5
+LEGACY_LIGHT_SERVICE = 105  # PST_LIGHT, used by the app's device details page.
+PLS_REMAINING_TIME = 18
+BLE_LIGHT_SERVICE = 106
+BLS_LEFT_TIME = 5
 
 DEVICE_INFO_CHARS = {
     "manufacturer": "00002a29-0000-1000-8000-00805f9b34fb",
@@ -99,8 +101,14 @@ def parse_info_payload(payload: bytes) -> dict[str, object]:
     message = parse_fields(message_bytes)
 
     result: dict[str, object] = {}
-    for key, number in (("name", 2), ("version", 3), ("power", 16),
-                        ("temperature", 17), ("memory", 18), ("id", 11)):
+    for key, number in (
+        ("name", 2),
+        ("version", 3),
+        ("power", 16),
+        ("temperature", 17),
+        ("memory", 18),
+        ("id", 11),
+    ):
         nested_bytes = _one(message, number)
         if isinstance(nested_bytes, bytes):
             result[key] = parse_fields(nested_bytes)
@@ -110,11 +118,12 @@ def parse_info_payload(payload: bytes) -> dict[str, object]:
 def build_info_request() -> bytes:
     # PeripheralInfo format: service_type=1, operate_type=2,
     # sub_service_type=3 (PIS_ALL_INFO=31), no message body.
-    payload = (protobuf_varint(1, INFO_SERVICE)
-               + protobuf_varint(2, GET)
-               + protobuf_varint(3, INFO_ALL))
-    return build_header(payload, service=INFO_SERVICE, subtype=INFO_ALL,
-                        operation=GET)
+    payload = (
+        protobuf_varint(1, INFO_SERVICE)
+        + protobuf_varint(2, GET)
+        + protobuf_varint(3, INFO_ALL)
+    )
+    return build_header(payload, service=INFO_SERVICE, subtype=INFO_ALL, operation=GET)
 
 
 async def _read_standard_characteristics(client: BleakClient) -> dict[str, str | int]:
@@ -129,8 +138,9 @@ async def _read_standard_characteristics(client: BleakClient) -> dict[str, str |
         elif name == "clock" and len(raw) >= 7:
             year = int.from_bytes(raw[0:2], "little")
             month, day, hour, minute, second = raw[2:7]
-            values[name] = (f"{year:04d}-{month:02d}-{day:02d} "
-                            f"{hour:02d}:{minute:02d}:{second:02d}")
+            values[name] = (
+                f"{year:04d}-{month:02d}-{day:02d} {hour:02d}:{minute:02d}:{second:02d}"
+            )
         elif raw:
             value = raw.decode("utf-8", errors="replace").strip("\x00\r\n ")
             if value:
@@ -150,14 +160,15 @@ async def _read_response_payload(
     packets: asyncio.Queue[bytes] = asyncio.Queue()
 
     def on_notification(_characteristic, data: bytearray) -> None:
-        packets.put_nowait(bytes(data))
+        packet = bytes(data)
+        packets.put_nowait(packet)
 
     await client.start_notify(UART_TX_UUID, on_notification)
     chunk_size = max(1, client.mtu_size - 3)
     for offset in range(0, len(request), chunk_size):
-        await client.write_gatt_char(UART_RX_UUID,
-                                     request[offset:offset + chunk_size],
-                                     response=True)
+        await client.write_gatt_char(
+            UART_RX_UUID, request[offset : offset + chunk_size], response=True
+        )
 
     buffer = bytearray()
     deadline = asyncio.get_running_loop().time() + timeout
@@ -165,15 +176,24 @@ async def _read_response_payload(
         remaining = deadline - asyncio.get_running_loop().time()
         if remaining <= 0:
             raise TimeoutError("no SR Mini info response")
-        buffer.extend(await asyncio.wait_for(packets.get(), remaining))
+        try:
+            packet = await asyncio.wait_for(packets.get(), remaining)
+        except asyncio.TimeoutError:
+            raise TimeoutError(
+                f"no response for service {service}, subtype {subtype}, "
+                f"operation {operation} within {timeout:g}s"
+            ) from None
+        buffer.extend(packet)
 
         while len(buffer) >= 20:
             # Skip unsolicited status packets and re-sync on the response
             # matching this service, subtype, and operation.
-            if (buffer[0] not in (1, 2)
-                    or buffer[1] != service
-                    or buffer[2] != subtype
-                    or buffer[4] != operation):
+            if (
+                buffer[0] not in (1, 2)
+                or buffer[1] != service
+                or buffer[2] != subtype
+                or buffer[4] != operation
+            ):
                 if buffer[0] == 3 and len(buffer) >= 20:
                     del buffer[:20]
                 else:
@@ -196,35 +216,88 @@ async def _read_response_payload(
 
 async def _read_app_info(client: BleakClient, timeout: float) -> dict[str, object]:
     payload = await _read_response_payload(
-        client, build_info_request(), service=INFO_SERVICE, subtype=INFO_ALL,
-        operation=GET, timeout=timeout,
+        client,
+        build_info_request(),
+        service=INFO_SERVICE,
+        subtype=INFO_ALL,
+        operation=GET,
+        timeout=timeout,
     )
     return parse_info_payload(payload)
 
 
 def build_remaining_runtime_request() -> bytes:
-    # Ride app: PST_BLE_LIGHT/POT_GET/BLS_LEFT_TIME (service 106, subtype 5).
-    payload = (protobuf_varint(1, LIGHT_SERVICE)
-               + protobuf_varint(2, GET)
-               + protobuf_varint(3, LIGHT_LEFT_TIME))
-    return build_header(payload, service=LIGHT_SERVICE,
-                        subtype=LIGHT_LEFT_TIME, operation=GET)
-
-
-async def _read_remaining_runtime(client: BleakClient, timeout: float) -> int | None:
-    payload = await _read_response_payload(
-        client, build_remaining_runtime_request(), service=LIGHT_SERVICE,
-        subtype=LIGHT_LEFT_TIME, operation=GET, timeout=timeout,
+    # Ride app: PST_LIGHT/POT_GET/PLS_REMAINING_TIME (105/2/18).
+    payload = (
+        protobuf_varint(1, LEGACY_LIGHT_SERVICE)
+        + protobuf_varint(2, GET)
+        + protobuf_varint(3, PLS_REMAINING_TIME)
     )
-    envelope = parse_fields(payload)
-    left_time = _one(envelope, 14)
+    return build_header(
+        payload, service=LEGACY_LIGHT_SERVICE, subtype=PLS_REMAINING_TIME, operation=GET
+    )
+
+
+def build_ble_remaining_runtime_request() -> bytes:
+    # Newer accessory path: PST_BLE_LIGHT/POT_GET/BLS_LEFT_TIME (106/2/5).
+    payload = (
+        protobuf_varint(1, BLE_LIGHT_SERVICE)
+        + protobuf_varint(2, GET)
+        + protobuf_varint(3, BLS_LEFT_TIME)
+    )
+    return build_header(
+        payload, service=BLE_LIGHT_SERVICE, subtype=BLS_LEFT_TIME, operation=GET
+    )
+
+
+async def _read_remaining_runtime(client: BleakClient, timeout: float) -> int:
+    request = build_remaining_runtime_request()
+    try:
+        payload = await _read_response_payload(
+            client,
+            request,
+            service=LEGACY_LIGHT_SERVICE,
+            subtype=PLS_REMAINING_TIME,
+            operation=GET,
+            timeout=timeout,
+        )
+        envelope = parse_fields(payload)
+        message = _one(envelope, 5)
+        if not isinstance(message, bytes):
+            raise ValueError("legacy runtime response has no message field")
+        # peripheral_light_message.remain_time is protobuf int32 field 8.
+        minutes = _one(parse_fields(message), 8)
+        if not isinstance(minutes, int):
+            raise ValueError("legacy runtime response has no remain_time value")
+        if minutes & 0x80000000:
+            minutes -= 0x100000000
+        if minutes < 0:
+            raise ValueError(f"legacy runtime response returned {minutes}")
+        return minutes
+    except (TimeoutError, ValueError):
+        try:
+            await client.stop_notify(UART_TX_UUID)
+        except Exception:
+            pass
+
+    request = build_ble_remaining_runtime_request()
+    payload = await _read_response_payload(
+        client,
+        request,
+        service=BLE_LIGHT_SERVICE,
+        subtype=BLS_LEFT_TIME,
+        operation=GET,
+        timeout=timeout,
+    )
+    left_time = _one(parse_fields(payload), 14)
     if not isinstance(left_time, bytes):
-        raise ValueError("SR Mini runtime response has no left_time field")
-    minutes = _one(parse_fields(left_time), 1)
-    if not isinstance(minutes, int):
-        raise ValueError("SR Mini runtime response has no time value")
-    # The app treats uint64 max as signed -1, meaning unavailable.
-    return None if minutes == 0xFFFFFFFFFFFFFFFF else minutes
+        raise ValueError("BLE-light runtime response has no left_time field")
+    raw_minutes = _one(parse_fields(left_time), 1)
+    if not isinstance(raw_minutes, int):
+        raise ValueError("BLE-light runtime response has no time value")
+    if raw_minutes == 0xFFFFFFFFFFFFFFFF:
+        raise ValueError("BLE-light runtime response returned unavailable (-1)")
+    return raw_minutes
 
 
 async def read_device_info(address: str, *, timeout: float = 5.0) -> dict[str, object]:
@@ -269,14 +342,24 @@ def format_device_info(data: dict[str, object]) -> str:
     power = app.get("power", {})
     temperature = app.get("temperature", {})
     memory = app.get("memory", {})
-    for key, value in (("names", names), ("versions", versions), ("power", power),
-                       ("temperature", temperature), ("memory", memory)):
+    for key, value in (
+        ("names", names),
+        ("versions", versions),
+        ("power", power),
+        ("temperature", temperature),
+        ("memory", memory),
+    ):
         if not isinstance(value, dict):
-            if key == "names": names = {}
-            elif key == "versions": versions = {}
-            elif key == "power": power = {}
-            elif key == "temperature": temperature = {}
-            else: memory = {}
+            if key == "names":
+                names = {}
+            elif key == "versions":
+                versions = {}
+            elif key == "power":
+                power = {}
+            elif key == "temperature":
+                temperature = {}
+            else:
+                memory = {}
 
     def get_text(name: str, fields: dict[int, list[int | bytes]], field: int) -> str:
         return str(standard.get(name) or _text(_one(fields, field)) or "not reported")
@@ -299,8 +382,9 @@ def format_device_info(data: dict[str, object]) -> str:
     # voltage = _one(power, 1)
     # voltage_text = (f"{voltage} mV" if isinstance(voltage, int)
     #                 else "not reported")
-    battery_text = (f"{battery_level}%" if isinstance(battery_level, int)
-                    else "not reported")
+    battery_text = (
+        f"{battery_level}%" if isinstance(battery_level, int) else "not reported"
+    )
 
     runtime_minutes = data.get("runtime_minutes")
     if isinstance(runtime_minutes, int):

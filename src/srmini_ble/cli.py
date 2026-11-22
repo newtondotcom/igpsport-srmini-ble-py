@@ -32,7 +32,9 @@ async def _run(args: argparse.Namespace) -> int:
         if not address:
             devices = await find_srmini(timeout=args.timeout)
             if not devices:
-                print("No device named SR Mini found. Wake the light or pass --address.")
+                print(
+                    "No device named SR Mini found. Wake the light or pass --address."
+                )
                 return 1
             if len(devices) > 1:
                 print("More than one SR Mini found; pass --address to choose one:")
@@ -55,8 +57,14 @@ async def _run(args: argparse.Namespace) -> int:
             print(f"{name}  {device.address}  RSSI={advertisement.rssi}")
         return 0
 
-    if args.command in ("radar", "radar-alert", "auto-sleep", "brake-alert",
-                        "smart-light-sync", "team-sync"):
+    if args.command in (
+        "radar",
+        "radar-alert",
+        "auto-sleep",
+        "brake-alert",
+        "smart-light-sync",
+        "team-sync",
+    ):
         if args.command == "auto-sleep":
             if args.action == "timeout":
                 if args.value is None:
@@ -86,9 +94,16 @@ async def _run(args: argparse.Namespace) -> int:
                 state = "on" if enabled else "off"
         elif args.command in ("smart-light-sync", "team-sync"):
             enabled = args.action == "on"
-            config = (CONFIG_SMART_LIGHT_SYNC if args.command == "smart-light-sync"
-                      else CONFIG_TEAM_SYNC)
-            feature = "Smart Light Sync" if args.command == "smart-light-sync" else "Team Sync"
+            config = (
+                CONFIG_SMART_LIGHT_SYNC
+                if args.command == "smart-light-sync"
+                else CONFIG_TEAM_SYNC
+            )
+            feature = (
+                "Smart Light Sync"
+                if args.command == "smart-light-sync"
+                else "Team Sync"
+            )
             frame = build_sync_switch_frame(config, enabled)
             state = "on" if enabled else "off"
         elif args.command == "brake-alert":
@@ -116,7 +131,9 @@ async def _run(args: argparse.Namespace) -> int:
         if not address:
             devices = await find_srmini(timeout=args.timeout)
             if not devices:
-                print("No device named SR Mini found. Wake the light or pass --address.")
+                print(
+                    "No device named SR Mini found. Wake the light or pass --address."
+                )
                 return 1
             if len(devices) > 1:
                 print("More than one SR Mini found; pass --address to choose one:")
@@ -139,7 +156,9 @@ async def _run(args: argparse.Namespace) -> int:
             print(f"No {feature.lower()} reply received; {state} is unconfirmed.")
             return 1
         if status != 0:
-            print(f"SR Mini rejected {feature.lower()} setting {state} (status {status}).")
+            print(
+                f"SR Mini rejected {feature.lower()} setting {state} (status {status})."
+            )
             return 1
         print(f"SR Mini acknowledged {feature.lower()} setting {state}.")
         return 0
@@ -177,7 +196,9 @@ async def _run(args: argparse.Namespace) -> int:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(prog="srmini", description="Control iGPSPORT SR Mini light modes over BLE")
+    parser = argparse.ArgumentParser(
+        prog="srmini", description="Control iGPSPORT SR Mini light modes over BLE"
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     scan = subparsers.add_parser("scan", help="find nearby SR Mini devices")
@@ -185,63 +206,134 @@ def main() -> None:
 
     subparsers.add_parser("modes", help="list the mode IDs found in the app")
 
-    info = subparsers.add_parser("info", help="read SR Mini device, battery, and sensor info")
-    info.add_argument("--address", help="BLE address/identifier; otherwise scan for SR Mini")
-    info.add_argument("--timeout", type=float, default=5.0,
-                      help="seconds to wait for the app-protocol info response")
-
-    radar = subparsers.add_parser("radar", help="enable or disable the SR Mini radar feature")
-    radar.add_argument("action", choices=("on", "off"), help="turn the radar feature on or off")
-    radar.add_argument("--address", help="BLE address/identifier; otherwise scan for SR Mini")
+    info = subparsers.add_parser(
+        "info", help="read SR Mini device, battery, and sensor info"
+    )
+    info.add_argument(
+        "--address", help="BLE address/identifier; otherwise scan for SR Mini"
+    )
+    info.add_argument(
+        "--timeout",
+        type=float,
+        default=5.0,
+        help="seconds to wait for the app-protocol info response",
+    )
+    radar = subparsers.add_parser(
+        "radar", help="enable or disable the SR Mini radar feature"
+    )
+    radar.add_argument(
+        "action", choices=("on", "off"), help="turn the radar feature on or off"
+    )
+    radar.add_argument(
+        "--address", help="BLE address/identifier; otherwise scan for SR Mini"
+    )
     radar.add_argument("--timeout", type=float, default=8.0)
 
-    radar_alert = subparsers.add_parser("radar-alert", help="enable or disable the SR Mini Radar Alert feature")
-    radar_alert.add_argument("action", choices=("on", "off"), help="turn Radar Alert on or off")
-    radar_alert.add_argument("--address", help="BLE address/identifier; otherwise scan for SR Mini")
+    radar_alert = subparsers.add_parser(
+        "radar-alert", help="enable or disable the SR Mini Radar Alert feature"
+    )
+    radar_alert.add_argument(
+        "action", choices=("on", "off"), help="turn Radar Alert on or off"
+    )
+    radar_alert.add_argument(
+        "--address", help="BLE address/identifier; otherwise scan for SR Mini"
+    )
     radar_alert.add_argument("--timeout", type=float, default=8.0)
 
-    auto_sleep = subparsers.add_parser("auto-sleep", help="configure SR Mini Auto Sleep and its timeout")
+    auto_sleep = subparsers.add_parser(
+        "auto-sleep", help="configure SR Mini Auto Sleep and its timeout"
+    )
     auto_sleep.add_argument("action", choices=("on", "off", "timeout"))
-    auto_sleep.add_argument("value", nargs="?", help="timeout in seconds when action is 'timeout'")
-    auto_sleep.add_argument("--enabled", choices=("on", "off"), default="on",
-                            help="Auto Sleep state when setting a timeout (default: on)")
-    auto_sleep.add_argument("--timeout-seconds", type=int, default=30,
-                            help="timeout to retain when turning Auto Sleep on or off (default: 30)")
-    auto_sleep.add_argument("--address", help="BLE address/identifier; otherwise scan for SR Mini")
-    auto_sleep.add_argument("--timeout", type=float, default=8.0,
-                            help="BLE scan timeout in seconds")
+    auto_sleep.add_argument(
+        "value", nargs="?", help="timeout in seconds when action is 'timeout'"
+    )
+    auto_sleep.add_argument(
+        "--enabled",
+        choices=("on", "off"),
+        default="on",
+        help="Auto Sleep state when setting a timeout (default: on)",
+    )
+    auto_sleep.add_argument(
+        "--timeout-seconds",
+        type=int,
+        default=30,
+        help="timeout to retain when turning Auto Sleep on or off (default: 30)",
+    )
+    auto_sleep.add_argument(
+        "--address", help="BLE address/identifier; otherwise scan for SR Mini"
+    )
+    auto_sleep.add_argument(
+        "--timeout", type=float, default=8.0, help="BLE scan timeout in seconds"
+    )
 
-    brake_alert = subparsers.add_parser("brake-alert", help="configure and enable or disable SR Mini Brake Alert")
+    brake_alert = subparsers.add_parser(
+        "brake-alert", help="configure and enable or disable SR Mini Brake Alert"
+    )
     brake_alert.add_argument("action", choices=("on", "off"))
-    brake_alert.add_argument("--mode", choices=("steady", "flash"), default="steady",
-                             help="brake alert mode (default: steady)")
-    brake_alert.add_argument("--brightness", choices=("low", "medium", "high"), default="low",
-                             help="brake brightness level (default: low)")
-    brake_alert.add_argument("--intensity", type=int, default=50,
-                             help="separate braking brightness slider, 10–100 percent (default: 50)")
-    brake_alert.add_argument("--pattern-index", type=int, default=0,
-                             help="device brake pattern index (default: 0)")
-    brake_alert.add_argument("--address", help="BLE address/identifier; otherwise scan for SR Mini")
-    brake_alert.add_argument("--timeout", type=float, default=8.0,
-                             help="BLE scan timeout in seconds")
+    brake_alert.add_argument(
+        "--mode",
+        choices=("steady", "flash"),
+        default="steady",
+        help="brake alert mode (default: steady)",
+    )
+    brake_alert.add_argument(
+        "--brightness",
+        choices=("low", "medium", "high"),
+        default="low",
+        help="brake brightness level (default: low)",
+    )
+    brake_alert.add_argument(
+        "--intensity",
+        type=int,
+        default=50,
+        help="separate braking brightness slider, 10–100 percent (default: 50)",
+    )
+    brake_alert.add_argument(
+        "--pattern-index",
+        type=int,
+        default=0,
+        help="device brake pattern index (default: 0)",
+    )
+    brake_alert.add_argument(
+        "--address", help="BLE address/identifier; otherwise scan for SR Mini"
+    )
+    brake_alert.add_argument(
+        "--timeout", type=float, default=8.0, help="BLE scan timeout in seconds"
+    )
 
-    smart_light_sync = subparsers.add_parser("smart-light-sync", help="enable or disable Smart Light Sync")
+    smart_light_sync = subparsers.add_parser(
+        "smart-light-sync", help="enable or disable Smart Light Sync"
+    )
     smart_light_sync.add_argument("action", choices=("on", "off"))
-    smart_light_sync.add_argument("--address", help="BLE address/identifier; otherwise scan for SR Mini")
-    smart_light_sync.add_argument("--timeout", type=float, default=8.0,
-                                  help="BLE scan timeout in seconds")
+    smart_light_sync.add_argument(
+        "--address", help="BLE address/identifier; otherwise scan for SR Mini"
+    )
+    smart_light_sync.add_argument(
+        "--timeout", type=float, default=8.0, help="BLE scan timeout in seconds"
+    )
 
     team_sync = subparsers.add_parser("team-sync", help="enable or disable Team Sync")
     team_sync.add_argument("action", choices=("on", "off"))
-    team_sync.add_argument("--address", help="BLE address/identifier; otherwise scan for SR Mini")
-    team_sync.add_argument("--timeout", type=float, default=8.0,
-                           help="BLE scan timeout in seconds")
+    team_sync.add_argument(
+        "--address", help="BLE address/identifier; otherwise scan for SR Mini"
+    )
+    team_sync.add_argument(
+        "--timeout", type=float, default=8.0, help="BLE scan timeout in seconds"
+    )
 
     set_mode = subparsers.add_parser("set-mode", help="send a light mode to an SR Mini")
-    set_mode.add_argument("mode", help="mode ID or name; run 'srmini modes' to list them")
-    set_mode.add_argument("--address", help="BLE address/identifier; otherwise scan for SR Mini")
+    set_mode.add_argument(
+        "mode", help="mode ID or name; run 'srmini modes' to list them"
+    )
+    set_mode.add_argument(
+        "--address", help="BLE address/identifier; otherwise scan for SR Mini"
+    )
     set_mode.add_argument("--timeout", type=float, default=8.0)
-    set_mode.add_argument("--dry-run", action="store_true", help="print the encoded frame without connecting")
+    set_mode.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="print the encoded frame without connecting",
+    )
 
     args = parser.parse_args()
     raise SystemExit(asyncio.run(_run(args)))

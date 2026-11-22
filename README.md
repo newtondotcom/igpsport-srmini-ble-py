@@ -95,8 +95,9 @@ app's `PIS_ALL_INFO` response for battery voltage, temperature, and memory. The
 decompiled SR Mini info schema does not include a separate protocol version;
 that field is shown as not reported. Temperature and memory are printed in the
 device's raw units; the protocol source does not document their scales.
-It also requests the app's `BLS_LEFT_TIME` response and displays the device's
-predicted remaining light runtime in minutes, formatted as hours/minutes.
+It also requests the app's `PST_LIGHT/PLS_REMAINING_TIME` response (service 105,
+subservice 18) and displays the device's predicted remaining light runtime in
+minutes, formatted as hours/minutes.
 
 Mode IDs and names are from the app's `BLE_LIGHT_MODE` enum. Whether each mode is
 supported by a particular firmware/device variant is not queried yet.

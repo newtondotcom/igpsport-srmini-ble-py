@@ -50,5 +50,9 @@ def build_brake_alert_frame(
         + protobuf_varint(3, SUBSERVICE_RIDE_CONFIG)
         + protobuf_bytes(17, ride_config)
     )
-    return build_header(payload, service=SERVICE_BLE_LIGHT,
-                        subtype=SUBSERVICE_RIDE_CONFIG, operation=OP_SET)
+    return build_header(
+        payload,
+        service=SERVICE_BLE_LIGHT,
+        subtype=SUBSERVICE_RIDE_CONFIG,
+        operation=OP_SET,
+    )

@@ -44,8 +44,10 @@ def parse_mode(value: str | int) -> LightMode:
     try:
         return LightMode[normalized]
     except KeyError as exc:
-        raise ValueError(f"unknown mode {value!r}; use a mode ID or one of: "
-                         + ", ".join(mode.name.lower() for mode in LightMode)) from exc
+        raise ValueError(
+            f"unknown mode {value!r}; use a mode ID or one of: "
+            + ", ".join(mode.name.lower() for mode in LightMode)
+        ) from exc
 
 
 def build_set_mode_frame(mode: LightMode | int) -> bytes:
@@ -58,5 +60,9 @@ def build_set_mode_frame(mode: LightMode | int) -> bytes:
         + protobuf_varint(3, SUBSERVICE_CURRENT_MODE)
         + protobuf_bytes(13, nested_current_mode)
     )
-    return build_header(body, service=SERVICE_BLE_LIGHT,
-                        subtype=SUBSERVICE_CURRENT_MODE, operation=OP_SET)
+    return build_header(
+        body,
+        service=SERVICE_BLE_LIGHT,
+        subtype=SUBSERVICE_CURRENT_MODE,
+        operation=OP_SET,
+    )
