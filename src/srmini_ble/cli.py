@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 
-from .client import find_srmini, send_frame
+from .client import find_srmini, send_frame, stream_radar
 from .brake import build_brake_alert_frame
 from .info import format_device_info, read_device_info
 from .function_config import build_auto_sleep_frame
@@ -55,6 +55,42 @@ async def _run(args: argparse.Namespace) -> int:
         for device, advertisement in devices:
             name = advertisement.local_name or device.name or "SR Mini"
             print(f"{name}  {device.address}  RSSI={advertisement.rssi}")
+        return 0
+
+    if args.command == "radar-stream":
+        address = args.address
+        if not address:
+            devices = await find_srmini(timeout=args.timeout)
+            if not devices:
+                print("No device named SR Mini found. Wake the light or pass --address.")
+                return 1
+            if len(devices) > 1:
+                print("More than one SR Mini found; pass --address to choose one:")
+                for device, advertisement in devices:
+                    name = advertisement.local_name or device.name or "SR Mini"
+                    print(f"  {name}  {device.address}")
+                return 2
+            address = devices[0][0].address
+
+        def show_targets(targets: list[dict[int, int]]) -> None:
+            if not targets:
+                print("Radar update: no targets")
+                return
+            for index, target in enumerate(targets, start=1):
+                values = "  ".join(
+                    f"{name}={target[field]}"
+                    for field, name in ((6, "level"), (7, "range"), (8, "speed"))
+                    if field in target
+                )
+                print(f"Target {index}: {values or '(empty target)'}")
+
+        print(f"Streaming radar detections from {address}; press Ctrl+C to stop.")
+        try:
+            await stream_radar(address, show_targets)
+        except asyncio.CancelledError:
+            print("Radar stream stopped; broadcast disabled.")
+        except KeyboardInterrupt:
+            print("Radar stream stopped; broadcast disabled.")
         return 0
 
     if args.command in ("manufacture-data", "manufacturer-data"):
@@ -268,6 +304,14 @@ def main() -> None:
         "--address", help="BLE address/identifier; otherwise scan for SR Mini"
     )
     radar.add_argument("--timeout", type=float, default=8.0)
+
+    radar_stream = subparsers.add_parser(
+        "radar-stream", help="stream and decode live SR Mini radar detections"
+    )
+    radar_stream.add_argument(
+        "--address", help="BLE address/identifier; otherwise scan for SR Mini"
+    )
+    radar_stream.add_argument("--timeout", type=float, default=8.0)
 
     radar_alert = subparsers.add_parser(
         "radar-alert", help="enable or disable the SR Mini Radar Alert feature"

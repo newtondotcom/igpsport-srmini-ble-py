@@ -23,6 +23,7 @@ uv run srmini manufacture-data
 uv run srmini info
 uv run srmini radar on
 uv run srmini radar off
+uv run srmini radar-stream
 uv run srmini modes
 uv run srmini set-mode high_always --dry-run
 uv run srmini set-mode 1
@@ -48,8 +49,24 @@ Frames are split into ATT-sized writes, matching the app's UART write behavior.
 
 `radar on` and `radar off` use the same smart configuration as the app's
 Intelligent Function Configuration → Radars switch (`BLCS_RADAR`, service 106,
-subservice 4). This is separate from the `PCS_DATA_BROADCAST` setting, which
-only controls radar data notifications.
+subservice 4). This is separate from `radar-stream`, which enables the app's
+`PCS_DATA_BROADCAST` setting (Config service 102, subservice 7), subscribes to
+UART notifications, and decodes incoming Radar target packets. Stop it with
+Ctrl+C; it disables data broadcast while disconnecting. Keep `radar on`
+enabled for detections to be generated.
+
+Decoded radar target fields come from the app's
+`peripheral_radar_target_message`:
+
+| Field | Proto # | Meaning | Units |
+| --- | --- | --- | --- |
+| `level` | 6 | Threat / danger level | Integer (`1` lower, `2` higher; app `dangerousLevel`) |
+| `range` | 7 | Distance to target | Centimetres (UI scales with `/16000` for the 160 m radar) |
+| `speed` | 8 | Closing / approach speed | Millimetres per second (`÷1000 × 3.6` → km/h) |
+
+On a captured single-car pass, level stayed `1` until about 50 m then became
+`2`; range fell from about 162 m to 4 m; speed was roughly 43–69 km/h (about
+57 km/h average), matching the range/time closing speed.
 
 `radar-alert on` and `radar-alert off` control the adjacent Radar Alert switch
 on that page (`BLCS_RADAR_WARN`, config value 21). It controls alert behavior,
