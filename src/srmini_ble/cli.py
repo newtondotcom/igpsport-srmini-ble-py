@@ -57,6 +57,36 @@ async def _run(args: argparse.Namespace) -> int:
             print(f"{name}  {device.address}  RSSI={advertisement.rssi}")
         return 0
 
+    if args.command in ("manufacture-data", "manufacturer-data"):
+        devices = await find_srmini(timeout=args.timeout)
+        if args.address:
+            devices = [
+                (device, advertisement)
+                for device, advertisement in devices
+                if device.address.lower() == args.address.lower()
+            ]
+        if not devices:
+            print("No matching SR Mini found. Wake the light and scan again.")
+            return 1
+        if len(devices) > 1:
+            print("More than one SR Mini found; pass --address to choose one:")
+            for device, advertisement in devices:
+                name = advertisement.local_name or device.name or "SR Mini"
+                print(f"  {name}  {device.address}")
+            return 2
+        device, advertisement = devices[0]
+        name = advertisement.local_name or device.name or "SR Mini"
+        if not advertisement.manufacturer_data:
+            print(f"No manufacturer-specific data found for {name} ({device.address}).")
+            return 1
+        company_id, payload = next(iter(advertisement.manufacturer_data.items()))
+        # The Ride app sends only the manufacturer payload, as lowercase hex
+        # bytes separated by underscores; the company ID is not included.
+        print(f"{name}  {device.address}")
+        print(f"manufactureData: {bytes(payload).hex('_')}")
+        print(f"Company ID: 0x{company_id:04x}")
+        return 0
+
     if args.command in (
         "radar",
         "radar-alert",
@@ -203,6 +233,16 @@ def main() -> None:
 
     scan = subparsers.add_parser("scan", help="find nearby SR Mini devices")
     scan.add_argument("--timeout", type=float, default=8.0)
+
+    manufacturer_data = subparsers.add_parser(
+        "manufacture-data",
+        aliases=("manufacturer-data",),
+        help="read the SR Mini BLE advertising manufacturer data",
+    )
+    manufacturer_data.add_argument(
+        "--address", help="BLE address/identifier; otherwise scan for SR Mini"
+    )
+    manufacturer_data.add_argument("--timeout", type=float, default=8.0)
 
     subparsers.add_parser("modes", help="list the mode IDs found in the app")
 

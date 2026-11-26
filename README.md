@@ -19,6 +19,7 @@ uv sync
 
 ```sh
 uv run srmini scan
+uv run srmini manufacture-data
 uv run srmini info
 uv run srmini radar on
 uv run srmini radar off
@@ -33,6 +34,11 @@ single device named SR Mini; if multiple matches are found, specify the address.
 Mode `14` is the left turn signal and may not illuminate the main beam. To test
 the main light, try `uv run srmini set-mode 1` (high steady mode) or `2` (medium
 steady mode). Mode `0` is off.
+
+`manufacture-data` reads the BLE advertisement's manufacturer-specific payload
+and prints it in the underscore-separated hex format used by the Ride app's
+firmware repair request. Pass `--address` if multiple SR Mini devices are
+nearby. `manufacturer-data` is also accepted as an alias.
 
 The implemented command sets the current light mode through BLE UART RX
 (`6e400002-b5a3-f393-e0a9-e50e24dcca9e`). The app's corresponding TX
